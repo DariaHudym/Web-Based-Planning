@@ -836,7 +836,8 @@
     if (animFrame) cancelAnimationFrame(animFrame);
     const canvas = document.getElementById('flowCanvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
+    // Use parent width since canvas may not have own width yet
+    canvas.width = canvas.parentElement.offsetWidth - 48 || 600;
     canvas.height = 280;
 
     // Define waypoints for the AGV path
@@ -857,86 +858,66 @@
         { x: W * 0.35, y: H * 0.25, type: 'transit' },
         { x: W * 0.6, y: H * 0.5, type: 'dropoff' },
         { x: W * 0.8, y: H * 0.75, type: 'dropoff' },
-        { x: W * 0.9, y: H * 0.4, type: 'charger' },
+        { x: W * 0.9, y: H * 0.4, type: 'charger' }
       );
     }
     if (chargers.length > 0) chargers.forEach(c => waypoints.push({ x: c.x / 100 * W, y: c.y / 100 * H, type: 'charger' }));
     waypoints.push(waypoints[0]); // loop back
 
-    let t = 0;
-    const SPEED = 0.003;
+    const total = waypoints.length - 1;
+    let segIdx = 0;
+    let segT = 0;
+    const SPEED = 0.008;
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
-
-      // Background grid
       ctx.strokeStyle = '#e8e8e8';
       ctx.lineWidth = 1;
       for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
       for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-      // Draw path
       ctx.beginPath();
       ctx.setLineDash([6, 4]);
       ctx.strokeStyle = '#c0cce0';
       ctx.lineWidth = 2;
       ctx.moveTo(waypoints[0].x, waypoints[0].y);
-      waypoints.forEach(wp => ctx.lineTo(wp.x, wp.y));
+      for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // Draw waypoint markers
-      waypoints.slice(0, -1).forEach((wp, i) => {
+      const pCount = {pickup:0, dropoff:0, charger:0, transit:0};
+      waypoints.slice(0, -1).forEach((wp) => {
+        pCount[wp.type] = (pCount[wp.type] || 0) + 1;
         const colors = { pickup: '#2ecc71', dropoff: '#e74c3c', charger: '#f39c12', transit: '#a0a0a0' };
-        const color = colors[wp.type] || '#999';
         ctx.beginPath();
         ctx.arc(wp.x, wp.y, 10, 0, Math.PI * 2);
-        ctx.fillStyle = color;
+        ctx.fillStyle = colors[wp.type] || '#999';
         ctx.fill();
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
         ctx.stroke();
-
-        // Label
+        const labelMap = { pickup: 'P', dropoff: 'D', charger: 'C', transit: '' };
+        const lbl = wp.type !== 'transit' ? (labelMap[wp.type] || '') + pCount[wp.type] : '';
         ctx.fillStyle = '#333';
         ctx.font = '10px Inter, sans-serif';
         ctx.textAlign = 'center';
-        const labels = { pickup: 'P' + (i + 1), dropoff: 'D' + (i + 1), charger: '⚡', transit: '' };
-        ctx.fillText(labels[wp.type] || '', wp.x, wp.y + 22);
+        ctx.fillText(lbl, wp.x, wp.y + 22);
       });
-
-      // Animate AGV dot along path
-      const total = waypoints.length - 1;
-      const seg = (t * total) % total;
-      const segIdx = Math.floor(seg);
-      const segT = seg - segIdx;
       const from = waypoints[segIdx];
-      const to = waypoints[segIdx + 1] || waypoints[0];
+      const to = waypoints[segIdx + 1];
       const agvX = from.x + (to.x - from.x) * segT;
       const agvY = from.y + (to.y - from.y) * segT;
-
-      // AGV shadow
       ctx.beginPath();
-      ctx.arc(agvX, agvY + 3, 12, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.1)';
-      ctx.fill();
-
-      // AGV body
-      ctx.beginPath();
-      ctx.arc(agvX, agvY, 12, 0, Math.PI * 2);
+      ctx.arc(agvX, agvY, 13, 0, Math.PI * 2);
       ctx.fillStyle = '#013E82';
       ctx.fill();
       ctx.strokeStyle = 'white';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.stroke();
-
-      // AGV icon
       ctx.fillStyle = 'white';
-      ctx.font = '10px Arial';
+      ctx.font = 'bold 11px Arial';
       ctx.textAlign = 'center';
       ctx.fillText('▶', agvX + 1, agvY + 4);
-
-      t += SPEED;
+      segT += SPEED;
+      if (segT >= 1) { segT = 0; segIdx = (segIdx + 1) % total; }
       animFrame = requestAnimationFrame(draw);
     }
     draw();
